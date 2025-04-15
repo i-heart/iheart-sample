@@ -105,18 +105,16 @@ async function sendMessage() {
 }
 
 async function authenticate() {
-  // user 객체에 accessToken 이 존재하지 않거나 accessToken 이 만료된 경우에 인증
-  if (!user.accessToken || new Date() > new Date(user.expireTime)) {
+  if (!user.accessToken) {
     const {clientId, password} = user;
     const {data} = await axios.post(`${BASE_URL}/api/v1/auth`,
         {clientId, password});
-    const {code, accessToken, expireTime} = data;
+    const {code, accessToken} = data;
 
     console.log(data, "\n");
 
     if (code === "100") {
       user.accessToken = accessToken;
-      user.expireTime = expireTime;
     }
   }
 }
