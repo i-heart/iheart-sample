@@ -17,7 +17,7 @@ axiosRetry(axios, {
     const code = error.response?.data?.code;
     let isRetry = ["401", "498"].includes(code);
 
-    if(isRetry) {
+    if (isRetry) {
       console.log("⚠️ 토큰이 없거나 만료로 재인증 시도중...", "\n");
       user.accessToken = "";
 
@@ -108,6 +108,84 @@ async function sendMessage() {
           },
         ],
         fileIdList: [fileId],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${user.accessToken}`,
+          "Content-Type": "application/json; charset=utf-8",
+        },
+      }
+  ).then(response => {
+    console.log(response.data);
+  });
+
+  // 4. 알림톡 (기본형) 발송
+  await axios.post(
+      `${BASE_URL}/api/v1/send/alt`,
+      {
+        callback: "16442105",
+        message: "안녕하세요, (주)아이하트입니다.\n해당 템플릿은 테스트건으로 승인 부탁드립니다.\n감사합니다.",
+        receiverList: [
+          {
+            phone: "01001231234",
+            userKey: "iheart-alt-1",
+            customFields: {
+              "이름": "김바른",
+              "회사": "아이하트"
+            }
+          }
+        ],
+        title: "강조형 문구",
+        senderKey: "fa14aa22ac69f174651d48d201111af25aac66e7",
+        templateCode: "TEMPLATEJBJt20241118103614",
+        type: "ALT",
+        buttons: [
+          {
+            name: "버튼명",
+            type: "WL",
+            linkMo: "https://www.messent.co.kr",
+            linkPc: "https://www.messent.co.kr"
+          }
+        ],
+        fallback: {
+          msgType: "SMS",
+          message: "[대체문자] 안녕하세요 #{회사} #{이름}입니다."
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${user.accessToken}`,
+          "Content-Type": "application/json; charset=utf-8",
+        },
+      }
+  ).then(response => {
+    console.log(response.data);
+  });
+
+  // 5. 알림톡 (이미지형) 발송
+  await axios.post(
+      `${BASE_URL}/api/v1/send/alt`,
+      {
+        callback: "16442105",
+        message: "등록테스트입니다.\n\n[아이하트 영업팀]\n\n#{이름}고객님의 적립금 소멸 예정 안내드립니다.\n\n※ 적립금은 마이페이지>적립금내역에서 자세한 확인 가능하며 이 메시지는 아이하트 회원에게만 발송됩니다.\n※ 이 메시지는 이용약관 동의에 따라 지급된 적립금 안내 메시지입니다.",
+        receiverList: [
+          {
+            phone: "01001231234",
+            userKey: "iheart-ali-1",
+            customFields: {
+              "이름": "김바른"
+            }
+          }
+        ],
+        senderKey: "00123c6160d2a054d336905ede205fd9b1524757",
+        templateCode: "TEMPLATEyfcl20240925105620",
+        type: "ALI",
+        fallback: {
+          "msgType": "MMS",
+          "subject": "대체문자",
+          "message": "[테스트] 알림톡 기본형 테스트입니다.",
+          "fileIdList": [fileId],
+        }
       },
       {
         headers: {
