@@ -88,7 +88,7 @@ async function sendMessage() {
 
   // 3. MMS 발송
   // 3-1. fileId 가져오기
-  const {fileId} = await uploadFile("MMS");
+  const mmsFileId = (await uploadFile("MMS"))?.data?.fileId;
 
   // 3-2. MMS 발송 요청
   await axios.post(
@@ -107,7 +107,7 @@ async function sendMessage() {
             },
           },
         ],
-        fileIdList: [fileId],
+        fileIdList: [mmsFileId],
       },
       {
         headers: {
@@ -163,6 +163,9 @@ async function sendMessage() {
   });
 
   // 5. 알림톡 (이미지형) 발송
+  // 5-1. fileId 가져오기 (MMS 대체문자 발송 case)
+  const altFallbackFileId = (await uploadFile("MMS"))?.data?.fileId;
+
   await axios.post(
       `${BASE_URL}/api/v1/send/alt`,
       {
@@ -184,7 +187,7 @@ async function sendMessage() {
           "msgType": "MMS",
           "subject": "대체문자",
           "message": "[테스트] 알림톡 기본형 테스트입니다.",
-          "fileIdList": [fileId],
+          "fileIdList": [altFallbackFileId],
         }
       },
       {
