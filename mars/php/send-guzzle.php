@@ -1,8 +1,17 @@
 <?php
+require 'vendor/autoload.php';
+
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
+use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Psr7\Response;
+use Psr\Http\Message\RequestInterface;
 
 $BASE_URL = "http://dev-poc-gw1-vnet.i-heart.kr:8000";
 $FILE_PATH = "../assets/sample.jpg";
-$MAX_RETRIES = 1;
 
 $user = [
     "clientId" => "minoflower",
@@ -10,104 +19,89 @@ $user = [
     "accessToken" => ""
 ];
 
-function curlRequest(string $method, string $uri, array $options = []): ?array
-{
-    global $BASE_URL, $user, $MAX_RETRIES;
+$stack = HandlerStack::create();
 
-    $attempt = 0;
-
-    while ($attempt <= $MAX_RETRIES) {
-        $ch = curl_init();
-        $url = $BASE_URL . $uri;
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-
-        // 인증 헤더
-        if (!empty($user['accessToken'])) {
-            $options['headers'][] = "Authorization: Bearer {$user['accessToken']}";
-        }
-
-        // multipart 처리
-        if (isset($options['multipart'])) {
-            $multipart = $options['multipart'];
-            $fields = [];
-            foreach ($multipart as $part) {
-                if (isset($part['name'], $part['contents'])) {
-                    $fields[$part['name']] = $part['contents'];
-                }
-            }
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $fields);
-        } // json 처리
-        elseif (isset($options['json'])) {
-            $json = json_encode($options['json']);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
-
-            $options['headers'][] = 'Content-Type: application/json; charset=utf-8';
-        }
-
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $options['headers']);
-
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        $data = json_decode($response, true);
-        $code = $data['code'] ?? '';
-
-        // Retry 조건
-        if (in_array($code, ['401', '498'])) {
-            echo "⚠️ 토큰이 없거나 만료로 재인증 시도중...\n\n";
-            $user['accessToken'] = "";
-            authenticate($user);
-            $attempt++;
-        } else {
-            return $data;
-        }
+$retryMiddleware = Middleware::retry(function (
+    int $retries,
+    Request $request,
+    ?Response $response = null,
+    ?RequestException $exception = null
+) use (&$user) {
+    if ($response === null) {
+        return false;
     }
 
-    return null;
-}
+    $statusCode = $response->getStatusCode();
+    $body = json_decode($response->getBody(), true);
+    $code = $body['code'] ?? '';
 
-function authenticate(array &$user): void
-{
+    $shouldRetry = in_array($code, ['401', '498']);
+
+    if ($shouldRetry) {
+        echo "⚠️ 토큰이 없거나 만료로 재인증 시도중...\n\n";
+        $user['accessToken'] = "";
+        authenticate($user);  // 토큰 갱신
+    }
+
+    return $shouldRetry && $retries < 1; // 1회만 재시도
+});
+
+// 요청마다 최신 토큰 반영
+$authHeaderMiddleware = Middleware::mapRequest(function (RequestInterface $request) use (&$user) {
+    if (!empty($user['accessToken'])) {
+        return $request->withHeader('Authorization', "Bearer {$user['accessToken']}");
+    }
+    return $request;
+});
+
+$stack->push($retryMiddleware);
+$stack->push($authHeaderMiddleware);  // 반드시 retryMiddleware 다음에 push
+
+$client = new Client([
+    'handler' => $stack,
+    'base_uri' => $BASE_URL
+]);
+
+/**
+ * @throws GuzzleException
+ */
+function authenticate(array &$user): void {
+    global $client;
+
     if (empty($user['accessToken'])) {
-        $response = curlRequest('POST', '/api/v1/auth', [
-            'headers' => [
-                'Authorization' => "Bearer {$user['accessToken']}",
-                'Content-Type' => 'application/json; charset=utf-8'
-            ],
+        $response = $client->post('/api/v1/auth', [
             'json' => [
                 'clientId' => $user['clientId'],
                 'password' => $user['password']
             ]
         ]);
 
-        echo json_encode($response) . "\n\n";
+        $data = json_decode($response->getBody(), true);
+        $code = $data['code'] ?? '';
+        $accessToken = $data['accessToken'] ?? '';
 
-        if (($response['code'] ?? '') === "100") {
-            $user['accessToken'] = $response['accessToken'];
+        echo json_encode($data) . "\n\n";
+
+        if ($code === "100") {
+            $user['accessToken'] = $accessToken;
         }
     }
 }
 
-function uploadFile(string $fileType, array &$user): ?array
-{
-    global $FILE_PATH;
+/**
+ * @throws GuzzleException
+ */
+function uploadFile(string $fileType, array &$user): ?array {
+    global $client, $FILE_PATH;
 
     if (empty($user['accessToken'])) {
         authenticate($user);
     }
 
-    $curlFile = new CURLFile(
-        realpath($FILE_PATH),
-        mime_content_type($FILE_PATH),
-        basename($FILE_PATH) // 이게 핵심!
-    );
-
     $multipart = [
         [
             'name' => 'filePart',
-            'contents' => $curlFile
+            'contents' => fopen($FILE_PATH, 'r')
         ],
         [
             'name' => 'fileType',
@@ -115,24 +109,27 @@ function uploadFile(string $fileType, array &$user): ?array
         ]
     ];
 
-    $response = curlRequest('POST', '/api/v1/file', [
+    $response = $client->post('/api/v1/file', [
         'headers' => [
-            'Authorization' => "Bearer {$user['accessToken']}",
+            'Authorization' => "Bearer {$user['accessToken']}"
         ],
         'multipart' => $multipart
     ]);
 
-    echo json_encode($response) . "\n";
+    $data = json_decode($response->getBody(), true);
+    echo json_encode($data) . "\n";
 
-    return $response['data'] ?? null;
+    return $data['data'] ?? null;
 }
 
-function sendMessage(): void
-{
-    global $user;
+/**
+ * @throws GuzzleException
+ */
+function sendMessage(): void {
+    global $client, $user;
 
     // 1. SMS 발송
-    $response = curlRequest('POST', '/api/v1/send/sms', [
+    $response = $client->post('/api/v1/send/sms', [
         'headers' => [
             'Authorization' => "Bearer {$user['accessToken']}",
             'Content-Type' => 'application/json; charset=utf-8'
@@ -152,10 +149,12 @@ function sendMessage(): void
             ]
         ]
     ]);
-    echo json_encode($response) . "\n";
+
+    $data = json_decode($response->getBody(), true);
+    echo json_encode($data) . "\n";
 
     // 2. LMS 발송
-    $response = curlRequest('POST', '/api/v1/send/mms', [
+    $response = $client->post('/api/v1/send/mms', [
         'headers' => [
             'Authorization' => "Bearer {$user['accessToken']}",
             'Content-Type' => 'application/json; charset=utf-8'
@@ -175,15 +174,20 @@ function sendMessage(): void
             ]
         ]
     ]);
-    echo json_encode($response) . "\n";
+
+    $data = json_decode($response->getBody(), true);
+    echo json_encode($data) . "\n";
 
     // 3. MMS 발송
     // 3-1. fileId 가져오기
     $uploadResult = uploadFile("MMS", $user);
-    $mmsFileId = $uploadResult['fileId'] ?? null;
+    $mmsFileId = null;
+    if (is_array($uploadResult) && isset($uploadResult['fileId'])) {
+        $mmsFileId = $uploadResult['fileId'];
+    }
 
     // 3-2. MMS 발송 요청
-    $response = curlRequest('POST', '/api/v1/send/mms', [
+    $response = $client->post('/api/v1/send/mms', [
         'headers' => [
             'Authorization' => "Bearer {$user['accessToken']}",
             'Content-Type' => 'application/json; charset=utf-8'
@@ -205,10 +209,12 @@ function sendMessage(): void
             'fileIdList' => [$mmsFileId]
         ]
     ]);
-    echo json_encode($response) . "\n";
 
-    // 4. 알림톡 (기본형)
-    $response = curlRequest('POST', '/api/v1/send/alt', [
+    $data = json_decode($response->getBody(), true);
+    echo json_encode($data) . "\n";
+
+    // 4. 알림톡 (기본형) 발송
+    $response = $client->post('/api/v1/send/alt', [
         'headers' => [
             'Authorization' => "Bearer {$user['accessToken']}",
             'Content-Type' => 'application/json; charset=utf-8'
@@ -244,22 +250,27 @@ function sendMessage(): void
             ]
         ]
     ]);
-    echo json_encode($response) . "\n";
 
-    // 5. 알림톡 (이미지형)
+    $data = json_decode($response->getBody(), true);
+    echo json_encode($data) . "\n";
+
+    // 5. 알림톡 (이미지형) 발송
     // 5-1. fileId 가져오기 (MMS 대체문자 발송 case)
     $uploadResult = uploadFile("MMS", $user);
-    $altFallbackFileId = $uploadResult['fileId'] ?? null;
+    $altFallbackFileId = null;
+    if (is_array($uploadResult) && isset($uploadResult['fileId'])) {
+        $altFallbackFileId = $uploadResult['fileId'];
+    }
 
     // 5-2. 알림톡 발송 요청
-    $response = curlRequest('POST', '/api/v1/send/alt', [
+    $response = $client->post('/api/v1/send/alt', [
         'headers' => [
             'Authorization' => "Bearer {$user['accessToken']}",
             'Content-Type' => 'application/json; charset=utf-8'
         ],
         'json' => [
             'callback' => '16442105',
-            'message' => "등록테스트입니다.\n\n[아이하트 영업팀]\n\n#{이름}고객님의 적립금 소멸 예정 안내드립니다.",
+            'message' => "등록테스트입니다.\n\n[아이하트 영업팀]\n\n#{이름}고객님의 적립금 소멸 예정 안내드립니다.\n\n※ 적립금은 마이페이지>적립금내역에서 자세한 확인 가능하며 이 메시지는 아이하트 회원에게만 발송됩니다.\n※ 이 메시지는 이용약관 동의에 따라 지급된 적립금 안내 메시지입니다.",
             'receiverList' => [
                 [
                     'phone' => '01044104049',
@@ -280,10 +291,12 @@ function sendMessage(): void
             ]
         ]
     ]);
-    echo json_encode($response) . "\n";
+
+    $data = json_decode($response->getBody(), true);
+    echo json_encode($data) . "\n";
 
     // 6. RCS 단문 발송
-    $response = curlRequest('POST', '/api/v1/send/rcs', [
+    $response = $client->post('/api/v1/send/rcs', [
         'headers' => [
             'Authorization' => "Bearer {$user['accessToken']}",
             'Content-Type' => 'application/json; charset=utf-8'
@@ -324,10 +337,12 @@ function sendMessage(): void
             ]
         ]
     ]);
-    echo json_encode($response) . "\n";
+
+    $data = json_decode($response->getBody(), true);
+    echo json_encode($data) . "\n";
 
     // 7. RCS 장문 발송
-    $response = curlRequest('POST', '/api/v1/send/rcs', [
+    $response = $client->post('/api/v1/send/rcs', [
         'headers' => [
             'Authorization' => "Bearer {$user['accessToken']}",
             'Content-Type' => 'application/json; charset=utf-8'
@@ -364,15 +379,20 @@ function sendMessage(): void
             ]
         ]
     ]);
-    echo json_encode($response) . "\n";
+
+    $data = json_decode($response->getBody(), true);
+    echo json_encode($data) . "\n";
 
     // 8. RCS 멀티 발송
     // 8-1. fileId 가져오기
     $uploadResult = uploadFile("RCS", $user);
-    $rcmFileId = $uploadResult['fileId'] ?? null;
+    $rcmFileId = null;
+    if (is_array($uploadResult) && isset($uploadResult['fileId'])) {
+        $rcmFileId = $uploadResult['fileId'];
+    }
 
     // 8-2. RCS 멀티 발송 요청
-    $response = curlRequest('POST', '/api/v1/send/rcs', [
+    $response = $client->post('/api/v1/send/rcs', [
         'headers' => [
             'Authorization' => "Bearer {$user['accessToken']}",
             'Content-Type' => 'application/json; charset=utf-8'
@@ -406,13 +426,14 @@ function sendMessage(): void
             'footer' => '0800000000'
         ]
     ]);
-    echo json_encode($response) . "\n";
+
+    $data = json_decode($response->getBody(), true);
+    echo json_encode($data) . "\n";
 }
 
-// 실행
 try {
     sendMessage();
-} catch (Exception $e) {
+} catch (GuzzleException $e) {
     echo "Error: " . $e->getMessage() . "\n";
 }
 ?>
