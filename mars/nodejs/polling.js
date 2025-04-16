@@ -4,7 +4,7 @@ const axiosRetry = require("axios-retry").default;
 const BASE_URL = "http://dev-poc-gw1-vnet.i-heart.kr:8000";
 
 const user = {
-  clientId: "rest_real_03",
+  clientId: "minoflower",
   password: "dkdlgkxm1!",
 };
 
@@ -75,7 +75,7 @@ async function polling() {
   );
 
   console.log("폴링 최초 요청 결과\n", firstResponse.data);
-  let rsltKey = firstResponse.data?.rsltKey;
+  let rsltKey = firstResponse.data?.data?.rsltKey;
 
   // 폴링 다음 요청
   while (rsltKey) {
@@ -122,7 +122,7 @@ async function checkPollingAvailable() {
       }
   );
 
-  return !!response.data?.rsltKey;
+  return !!response.data?.data?.rsltKey;
 }
 
 function delay(ms) {
