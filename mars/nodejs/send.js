@@ -88,7 +88,7 @@ async function sendMessage() {
 
   // 3. MMS 발송
   // 3-1. fileId 가져오기
-  const {fileId} = await uploadFile("MMS");
+  const mmsFileId = (await uploadFile("MMS"))?.fileId;
 
   // 3-2. MMS 발송 요청
   await axios.post(
@@ -107,7 +107,7 @@ async function sendMessage() {
             },
           },
         ],
-        fileIdList: [fileId],
+        fileIdList: [mmsFileId],
       },
       {
         headers: {
@@ -163,6 +163,10 @@ async function sendMessage() {
   });
 
   // 5. 알림톡 (이미지형) 발송
+  // 5-1. fileId 가져오기 (MMS 대체문자 발송 case)
+  const altFallbackFileId = (await uploadFile("MMS"))?.fileId;
+
+  // 5-2. 알림톡 발송 요청
   await axios.post(
       `${BASE_URL}/api/v1/send/alt`,
       {
@@ -184,8 +188,145 @@ async function sendMessage() {
           "msgType": "MMS",
           "subject": "대체문자",
           "message": "[테스트] 알림톡 기본형 테스트입니다.",
-          "fileIdList": [fileId],
+          "fileIdList": [altFallbackFileId],
         }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${user.accessToken}`,
+          "Content-Type": "application/json; charset=utf-8",
+        },
+      }
+  ).then(response => {
+    console.log(response.data);
+  });
+
+  // 6. RCS 단문 발송
+  await axios.post(
+      `${BASE_URL}/api/v1/send/rcs`,
+      {
+        callback: "16442105",
+        subject: "메시지 제목",
+        message: "안녕하세요. #{주소}에 사는 #{대상자} 입니다.",
+        buttons: [
+          {
+            type: "URL",
+            name: "버튼명",
+            url: "https://www.messent.co.kr"
+          }
+        ],
+        receiverList: [
+          {
+            phone: "01001231234",
+            userKey: "iheart-rcs-1",
+            customFields: {
+              "대상자": "정의진",
+              "주소": "서울특별시 금천구"
+            }
+          }
+        ],
+        agencyId: "IHEART",
+        agencyKey: "AK.eEt1RjNBZBP1xjC",
+        brandId: "BR.m4nxVh6sf4",
+        brandKey: "BK.q01CWxkZ2KO2Y9d",
+        messageBaseId: "SS000000",
+        isCopy: "Y",
+        expiryOpt: "2",
+        header: "1",
+        footer: "0800000000",
+        fallback: {
+          msgType: "SMS",
+          message: "안녕하세요. #{주소}에 사는 #{대상자} 입니다."
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${user.accessToken}`,
+          "Content-Type": "application/json; charset=utf-8",
+        },
+      }
+  ).then(response => {
+    console.log(response.data);
+  });
+
+  // 7. RCS 장문 발송
+  await axios.post(
+      `${BASE_URL}/api/v1/send/rcs`,
+      {
+        callback: "16442105",
+        subject: "메시지 제목",
+        message: "안녕하세요, 고객님. 저희 서비스를 이용해주셔서 진심으로 감사드립니다.\n이번 달에도 다양한 혜택과 이벤트가 준비되어 있으니, 자세한 내용은 홈페이지를 통해 확인해 주세요.\n항상 최선을 다하는 브랜드가 되겠습니다. 감사합니다.",
+        buttons: [
+          {
+            type: "URL",
+            name: "버튼명",
+            url: "https://www.messent.co.kr"
+          }
+        ],
+        receiverList: [
+          {
+            phone: "01001231234",
+            userKey: "iheart-rcl-1",
+          }
+        ],
+        agencyId: "IHEART",
+        agencyKey: "AK.eEt1RjNBZBP1xjC",
+        brandId: "BR.m4nxVh6sf4",
+        brandKey: "BK.q01CWxkZ2KO2Y9d",
+        messageBaseId: "SL000000",
+        isCopy: "Y",
+        expiryOpt: "2",
+        header: "1",
+        footer: "0800000000",
+        fallback: {
+          msgType: "SMS",
+          message: "안녕하세요, 고객님. 대체문자 발송드립니다."
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${user.accessToken}`,
+          "Content-Type": "application/json; charset=utf-8",
+        },
+      }
+  ).then(response => {
+    console.log(response.data);
+  });
+
+  // 8. RCS 멀티 발송
+  // 8-1. fileId 가져오기
+  const rcmFileId = (await uploadFile("RCS"))?.fileId;
+
+  // 8-2. RCS 멀티 발송 요청
+  await axios.post(
+      `${BASE_URL}/api/v1/send/rcs`,
+      {
+        callback: "16442105",
+        subject: "안내사항",
+        message: "안녕하세요, 고객님. 저희 서비스를 이용해주셔서 진심으로 감사드립니다.",
+        fileId: rcmFileId,
+        buttons: [
+          {
+            type: "URL",
+            name: "버튼명",
+            url: "https://www.messent.co.kr"
+          }
+        ],
+        receiverList: [
+          {
+            phone: "01001231234",
+            userKey: "iheart-rcm-1",
+          }
+        ],
+        agencyId: "IHEART",
+        agencyKey: "AK.eEt1RjNBZBP1xjC",
+        brandId: "BR.m4nxVh6sf4",
+        brandKey: "BK.q01CWxkZ2KO2Y9d",
+        messageBaseId: "SMwThT00",
+        isCopy: "Y",
+        expiryOpt: "2",
+        header: "1",
+        footer: "0800000000"
       },
       {
         headers: {
@@ -214,6 +355,10 @@ async function authenticate() {
 }
 
 async function uploadFile(fileType) {
+  if (!user.accessToken) {
+    await authenticate();
+  }
+
   const form = new FormData();
   form.append("filePart", fs.createReadStream(FILE_PATH));
   form.append("fileType", fileType);
