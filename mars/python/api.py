@@ -234,7 +234,7 @@ def main():
 
   print('RCM:', client.send_rcs(rcm_payload))
 
-  client.get_report();
+  client.get_report()
 
 if __name__ == '__main__':
   main()
