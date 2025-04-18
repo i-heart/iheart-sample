@@ -182,7 +182,7 @@ public class ApiMain {
     return request("POST", "/api/v1/send/rcs", payload, null);
   }
 
-  public void getReport() throws IOException, InterruptedException {
+  public void polling() throws IOException, InterruptedException {
     int retries = 5;
     int interval = 5000;
     String rsltKey = null;
@@ -462,6 +462,6 @@ public class ApiMain {
     System.out.println("File ID: " + rcmFileId);
     System.out.println("RCM: " + apiMain.sendRcs(rcmPayload));
 
-    apiMain.getReport();
+    apiMain.polling();
   }
 }

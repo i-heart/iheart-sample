@@ -73,7 +73,7 @@ class MarsClient:
       return resp_data['data']['fileId']
     return None
 
-  def get_report(self):
+  def polling(self):
     retries = 5
     interval = 5
     rslt_key = None
@@ -234,7 +234,7 @@ def main():
 
   print('RCM:', client.send_rcs(rcm_payload))
 
-  client.get_report()
+  client.polling()
 
 if __name__ == '__main__':
   main()

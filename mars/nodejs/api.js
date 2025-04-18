@@ -118,7 +118,7 @@ async function uploadFile(filePath, fileType = 'MMS') {
   return (res.data.code === '100') ? res.data.data.fileId : null;
 }
 
-async function getReport() {
+async function polling() {
   const headers = {'Content-Type': 'application/json; charset=utf-8'};
   let rsltKey = null;
 
@@ -373,5 +373,5 @@ async function getReport() {
   console.log('RCM: ', await sendRcs(rcmPayload));
 
 
-  await getReport();
+  await polling();
 })();
