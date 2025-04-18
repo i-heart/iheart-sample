@@ -1,8 +1,10 @@
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
@@ -231,23 +233,24 @@ public class ApiMain {
     String baseUrl = "http://dev-poc-gw1-vnet.i-heart.kr:8000";
 
     ApiMain apiMain = new ApiMain(clientId, password, baseUrl);
+    ObjectMapper mapper = new ObjectMapper();
 
-    String smsPayload =
-        "{"
-        + "\"callback\": \"16442105\","
-        + "\"message\": \"안녕하세요. #{회사명} 소속 #{이름}입니다.\","
-        + "\"receiverList\": ["
-        + "  {"
-        + "    \"phone\": \"01001231234\","
-        + "    \"userKey\": \"iheart-sms-1\","
-        + "    \"customFields\": {"
-        + "      \"이름\": \"김바른\","
-        + "      \"회사명\": \"아이하트\""
-        + "    }"
-        + "  }"
-        + "]"
-        + "}";
+    Map<String, Object> payload = new HashMap<>();
+    payload.put("callback", "16442105");
+    payload.put("message", "안녕하세요. #{회사명} 소속 #{이름}입니다.");
 
+    Map<String, Object> receiver = new HashMap<>();
+    receiver.put("phone", "01001231234");
+    receiver.put("userKey", "iheart-sms-1");
+
+    Map<String, String> customFields = new HashMap<>();
+    customFields.put("이름", "김바른");
+    customFields.put("회사명", "아이하트");
+    receiver.put("customFields", customFields);
+
+    payload.put("receiverList", Collections.singletonList(receiver));
+
+    String smsPayload = mapper.writeValueAsString(payload);
     System.out.println("SMS: " + apiMain.sendSms(smsPayload));
 
     String lmsPayload =
